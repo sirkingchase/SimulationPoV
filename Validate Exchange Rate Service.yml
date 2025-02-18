@@ -1,0 +1,50 @@
+schema: SimV1
+
+connections:
+- name: validateExchangeRate
+  port: 37070
+
+services: 
+- name: Validate that Exchange Rate
+  steps:
+  - direction: In
+    name: validate matches decicmal
+    from: validateExchangeRate
+    buffer:
+      - jsonPath: "['data'][0]['exchange_rate']"
+        name: theRate
+    trigger:
+      - jsonPath: $[?($.data[0].exchange_rate != '')]
+        exists: true
+      
+  - direction: Out
+    name: output success message
+    message:
+      method: POST
+      payload: "%{theRate}"
+
+- name: getInfosTest
+  steps:
+  - connection:
+      endpoint: http://localhost:37070
+      listen: false
+    direction: Out
+    message:
+      method: POST
+      payload: |-
+        {
+            "data": [
+                {
+                  "country": "Canada",
+                  "currency": "Dollar",
+                  "record_calendar_quarter": "1",
+                  "record_calendar_year": "2023",
+                  "country_currency_desc": "Canada-Dollar",
+                  "exchange_rate": "1.666",
+                  "src_line_nbr": "ToscaOSV"
+                }
+            ]
+        }
+        
+        
+  - direction: In

@@ -1,0 +1,91 @@
+schema: SimV1
+resources:
+- file: sim_us_exchange_rates.csv
+  name: rates
+
+connections:
+#- forward:
+#    mode: SimulateFirst
+#    to: Check Virtual Service Ouput
+- name: simTreasuryExchange
+  port: 27070
+
+- endpoint: https://api.fiscaldata.treasury.gov/
+  listen: false
+  name: realTreasuryUS
+
+- name: validateExchangeRateEndpoint
+  endpoint: http://localhost:37070
+  listen: false
+
+services:
+
+- name: US Treasury Exchange Rates Request Simulation
+  steps:
+  - buffer:
+    - key: filter
+      type: Query
+      value: record_calendar_year:eq:{XB[osv_year]},country_currency_desc:in:({XB[osv_country]}-{XB[osv_currency]}),record_calendar_quarter:eq:{XB[osv_quarter]}
+    - name: rnd_exchange
+      value: '{RND[3]}'
+
+    direction: In
+    from: simTreasuryExchange
+    name: US Treasury Exchange Rates Request
+    trigger:
+    - type: Path
+      value: services/api/fiscal_service/v1/accounting/od/rates_of_exchange
+
+  - direction: Out
+    to: validateExchangeRateEndpoint
+    insert:
+    - jsonPath: "['data'][0]['country']"
+      value: '{B[osv_country]}'
+    - jsonPath: "['data'][0]['currency']"
+      value: '{B[osv_currency]}'
+    - jsonPath: "['data'][0]['exchange_rate']"
+      value: "{FROM[rates][exchange_rate][record_fiscal_year = '{b[osv_year]}' AND record_fiscal_quarter = '{B[osv_quarter]}' AND country = '{b[osv_country]}' AND currency = '{b[osv_currency]}']}"
+    message:
+      method: POST
+      payload: |-
+        {
+            "data": [
+                {
+                  "country": "%{osv_country}",
+                  "currency": "%{osv_currency}",
+                  "record_calendar_quarter": "%{osv_quarter}",
+                  "record_calendar_year": "%{osv_year}",
+                  "country_currency_desc": "%{osv_country}-%{osv_currency}",
+                  "exchange_rate": "",
+                  "src_line_nbr": "ToscaOSV"
+                }
+            ]
+        }
+      statusCode: 200 OK
+    name: US Treasury Exchange Rates Response
+    
+  - direction: In
+    from: validateExchangeRateEndpoint
+    to: simTreasuryExchange
+    name: Retun from cat out
+
+
+- name: get2023
+  steps:
+  - connection:
+      endpoint: http://localhost:27070/services/api/fiscal_service/v1/accounting/od/rates_of_exchange?filter=record_calendar_year%3Aeq%3A2023%2Ccountry_currency_desc%3Ain%3A(Canada-Dollar)%2Crecord_calendar_quarter%3Aeq%3A1
+      listen: false
+    direction: Out
+    message:
+      method: GET
+  - direction: In
+
+- name: get1998
+  steps:
+  - connection:
+      endpoint: http://localhost:27070/services/api/fiscal_service/v1/accounting/od/rates_of_exchange?filter=record_calendar_year%3Aeq%3A1998%2Ccountry_currency_desc%3Ain%3A(Canada-Dollar)%2Crecord_calendar_quarter%3Aeq%3A1
+      listen: false
+    direction: Out
+    message:
+      method: GET
+  - direction: In
