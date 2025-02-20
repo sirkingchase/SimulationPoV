@@ -4,9 +4,11 @@ resources:
   name: rates
 
 connections:
-#- forward:
-#    mode: SimulateFirst
-#    to: Check Virtual Service Ouput
+- forward:
+    mode: SimulateFirst
+    to: realTreasuryUS
+    simulateOn: 
+      statusCodes: 404 NotFound, 404 
 - name: simTreasuryExchange
   port: 27070
 
@@ -25,7 +27,11 @@ services:
   - buffer:
     - key: filter
       type: Query
-      value: record_calendar_year:eq:{XB[osv_year]},country_currency_desc:in:({XB[osv_country]}-{XB[osv_currency]}),record_calendar_quarter:eq:{XB[osv_quarter]}
+      value: "{xb[filterQuery]}"
+    - key: filter
+      type: Query
+      value: record_calendar_year:eq:{XB[osv_year]},country_currency_desc:eq:{XB[osv_country]}-{XB[osv_currency]},record_calendar_quarter:eq:{XB[osv_quarter]}
+      #value: record_calendar_year:eq:{XB[osv_year]},country_currency_desc:in:({XB[osv_country]}-{XB[osv_currency]}),record_calendar_quarter:eq:{XB[osv_quarter]}
     - name: rnd_exchange
       value: '{RND[3]}'
 
@@ -57,7 +63,8 @@ services:
                   "record_calendar_year": "%{osv_year}",
                   "country_currency_desc": "%{osv_country}-%{osv_currency}",
                   "exchange_rate": "",
-                  "src_line_nbr": "ToscaOSV"
+                  "src_line_nbr": "ToscaOSV",
+                  "filterQuery": "%{filterQuery}"
                 }
             ]
         }
@@ -65,9 +72,24 @@ services:
     name: US Treasury Exchange Rates Response
     
   - direction: In
-    from: validateExchangeRateEndpoint
+    buffer:
+    - name: request
+    - name: statusCode
+      property: StatusCode
+    trigger:
+    - exists: true
+      jsonPath: $[?($.data[0].filterQuery != '')]
+    name: Message was Validated
+    
+  - direction: Out
     to: simTreasuryExchange
-    name: Retun from cat out
+    message:
+      method: POST
+      #payload: hellow
+      payload: |-
+        %{request}
+      #statusCode: 404 Not Found
+    name: Return Validated Message
 
 
 - name: get2023
@@ -80,10 +102,10 @@ services:
       method: GET
   - direction: In
 
-- name: get1998
+- name: get2002
   steps:
   - connection:
-      endpoint: http://localhost:27070/services/api/fiscal_service/v1/accounting/od/rates_of_exchange?filter=record_calendar_year%3Aeq%3A1998%2Ccountry_currency_desc%3Ain%3A(Canada-Dollar)%2Crecord_calendar_quarter%3Aeq%3A1
+      endpoint: http://localhost:27070/services/api/fiscal_service/v1/accounting/od/rates_of_exchange?filter=record_calendar_year%3Aeq%3A2002%2Ccountry_currency_desc%3Aeq%3ACanada-Dollar%2Crecord_calendar_quarter%3Aeq%3A1
       listen: false
     direction: Out
     message:

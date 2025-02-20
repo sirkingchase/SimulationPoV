@@ -1,27 +1,71 @@
 schema: SimV1
-
 connections:
 - name: validateExchangeRate
   port: 37070
+- endpoint: https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/od/rates_of_exchange
+  listen: false
+  name: realTreasuryUS
+- name: simExchangeRateEndpoint
+  endpoint: http://localhost:27070
+  listen: false
 
-services: 
+services:
 - name: Validate that Exchange Rate
   steps:
-  - direction: In
-    name: validate matches decicmal
+  - buffer:
+    - jsonPath: "['data'][0]['exchange_rate']"
+      name: theRate
+    - name: request
+    direction: In
     from: validateExchangeRate
-    buffer:
-      - jsonPath: "['data'][0]['exchange_rate']"
-        name: theRate
+    name: validate matches decicmal
     trigger:
-      - jsonPath: $[?($.data[0].exchange_rate != '')]
-        exists: true
-      
+    - exists: true
+      jsonPath: $[?($.data[0].exchange_rate != '')]
   - direction: Out
-    name: output success message
     message:
       method: POST
-      payload: "%{theRate}"
+      payload: |-
+        %{request}
+    name: Exchange Rate was in CSV
+
+- name: Validate that Exchange Rate is NULL
+  steps:
+  - buffer:
+    - jsonPath: "['data'][0]['exchange_rate']"
+      name: theRate
+    - name: request
+    direction: In
+    from: validateExchangeRate
+    name: validate matches decicmal
+    trigger:
+    - exists: true
+      jsonPath: $[?($.data[0].exchange_rate == '')]
+
+      
+  - direction: Out
+    to: realTreasuryUS
+    insert:
+      - type: Path
+        value: services/api/fiscal_service/v1/accounting/od/rates_of_exchange
+      - type: Query
+        key: filter
+        value: "{b[filterQuery]}"
+    message:
+      method: GET
+    name: Lookup Exchange Rate via API
+
+  - direction: In
+    buffer:
+      - name: request
+
+  - direction: Out
+    to: validateExchangeRate
+    message:
+      method: POST
+      payload: |-
+        %{request}
+    name: Exchange Rate was Lookedup
 
 - name: getInfosTest
   steps:
@@ -41,10 +85,34 @@ services:
                   "record_calendar_year": "2023",
                   "country_currency_desc": "Canada-Dollar",
                   "exchange_rate": "1.666",
-                  "src_line_nbr": "ToscaOSV"
+                  "src_line_nbr": "ToscaOSV",
+                  "filterQuery": "record_calendar_year:eq:2023,country_currency_desc:in:(Canada-Dollar),record_calendar_quarter:eq:1"
                 }
             ]
         }
-        
-        
+  - direction: In
+
+- name: getNullTest
+  steps:
+  - connection:
+      endpoint: http://localhost:37070
+      listen: false
+    direction: Out
+    message:
+      method: POST
+      payload: |-
+        {
+            "data": [
+                {
+                  "country": "Canada",
+                  "currency": "Dollar",
+                  "record_calendar_quarter": "1",
+                  "record_calendar_year": "1999",
+                  "country_currency_desc": "Canada-Dollar",
+                  "exchange_rate": "",
+                  "src_line_nbr": "ToscaOSV",
+                  "filterQuery": "record_calendar_year:eq:1999,country_currency_desc:in:(Canada-Dollar),record_calendar_quarter:eq:1"
+                }
+            ]
+        }
   - direction: In
