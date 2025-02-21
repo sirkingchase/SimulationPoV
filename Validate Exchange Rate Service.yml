@@ -35,6 +35,8 @@ services:
     - jsonPath: "['data'][0]['exchange_rate']"
       name: theRate
     - name: request
+    - jsonPath: "['data'][0]['filterQuery']"
+      name: filterQuery
     direction: In
     from: validateExchangeRate
     name: validate matches decicmal
@@ -48,8 +50,8 @@ services:
     insert:
       - type: Path
         value: services/api/fiscal_service/v1/accounting/od/rates_of_exchange
-      - type: Query
-        key: filter
+      - key: filter
+        type: Query
         value: "{b[filterQuery]}"
     message:
       method: GET
